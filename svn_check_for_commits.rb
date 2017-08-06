@@ -1,5 +1,6 @@
 #!/usr/bin/ruby -w
-#$Id: svn_check_for_commits.rb
+#$Id$
+#$URL$
 $svn_exe = "svn"  # default assumes the program is in $PATH
 
 def usage(msg)
@@ -7,9 +8,8 @@ def usage(msg)
   exit(1)
 end
 
-
 $tmpdir = ENV["TMPDIR"] || "/tmp"
-$dirtemplate = "#svnspam.#{Process.getpgrp}.#{Process.uid}"
+$dirtemplate = "svnspam.#{Process.getpgrp}.#{Process.uid}"
 # arguments to pass though to 'svnspam.rb'
 $passthrough_args = []
 
@@ -27,8 +27,8 @@ def init
 end
 
 def cleanup
-  #File.unlink("#{$datadir}/logfile")
-  #Dir.rmdir($datadir)
+  File.unlink("#{$datadir}/logfile")
+  Dir.rmdir($datadir)
 end
 
 def send_email
@@ -49,7 +49,6 @@ def safer_popen(*args)
     end
   end
 end
-
 
 # Process the command-line arguments in the given list
 def process_args
@@ -91,8 +90,7 @@ end
 
 # runs the given svn subcommand
 def svnexe(cmd, revision, *args)
-  rev = revision.to_s
-  safer_popen($svn_exe, cmd, $repository, "-r", rev, *args) do |io|
+  safer_popen($svn_exe, cmd, $repository, "-r", revision.to_s, *args) do |io|
     yield io
   end
 end
@@ -123,7 +121,7 @@ class LineReader
   end
 
   def hold
-      @hold = @hold + 1
+    @hold = @hold + 1
   end
 
   def assert_next(re=nil)
@@ -135,121 +133,34 @@ class LineReader
   end
 end
 
-
-def read_modified_diff(out, lines, path)
+def read_diff(out, lines, path)
   lines.assert_next(/^=+$/)
   lines.next_line
-  next_line = lines.current
-  if( next_line =~ /Cannot display.*$/ )
-    out.puts "#V #{prev_revision},#{revision}"
-    out.puts "#M #{path}"
-    out.puts "#U Cannot display: file marked as a binary type."
-  elsif( next_line =~ /svn:mime-type.*$/ )
-      out.puts "#V #{prev_revision},#{revision}"
-      out.puts "#M #{path}"
-      out.puts "#U svn:mime-type = application/octet-stream."
-  else
-    diff1 = lines.current
-    match1 = diff1.match(/^---.*\(revision (\d+)\)$/) 
-    prev_rev = match1.captures[0].to_i
+  diff1 = lines.current
+  match1 = diff1.match(/^---.*\(revision (\d+)\)$/)
+  if match1
     lines.next_line
     diff2 = lines.current
-    match2 = diff2.match(/^+++.*\(revision (\d+)\)$/) 
-    next_rev = match2.captures[0].to_i
-    diff2 = lines.current
-    out.puts "#V #{prev_rev},#{next_rev}"
+    match2 = diff2.match(/^\+\+\+.*\(revision (\d+)\)$/)
+    if match2
+      prev_rev = match1.captures[0].to_i
+      next_rev = match2.captures[0].to_i
+      out.puts "#V #{prev_rev},#{next_rev}"
+      out.puts "#M #{path}"
+      out.puts "#U #{diff1}"
+      out.puts "#U #{diff2}"
+    else
+      out.puts "#V #{$prev_revision},#{$revision}"
+      out.puts "#M #{path}"
+      out.puts "#U #{diff1}"
+    end
+  else
+    out.puts "#V #{$prev_revision},#{$revision}"
     out.puts "#M #{path}"
-    out.puts "#U #{diff1}"
-    out.puts "#U #{diff2}"
-    while lines.next_line && lines.current =~ /^[-\+ @\\]/
-      out.puts "#U #{lines.current}"
-    end
   end
-end
-
-def read_added_diff(out, lines, path)
-  lines.assert_next(/^=+$/)
-  m = lines.assert_next(/^---.*\(revision (\d+)\)$/)
-  #prev_rev = m[1].to_i
-  diff1 = lines.current
-  m = lines.assert_next(/^\+\+\+.*\(revision (\d+)\)$/)
-  next_rev = m[1].to_i
-  diff2 = lines.current
-  out.puts "#V NONE,#{next_rev}"
-  out.puts "#A #{path}"
-  out.puts "#U #{diff1}"
-  out.puts "#U #{diff2}"
-  while lines.next_line && lines.current =~ /^[-\+ @\\]/
+  while lines.next_line && lines.current !~ /^Index:\s+(.*)/
     out.puts "#U #{lines.current}"
   end
-end
-
-def read_deleted_diff(out, lines, path)
-  lines.assert_next(/^=+$/)
-  m = lines.assert_next(/^---.*\(revision (\d+)\)$/)
-  prev_rev = m[1].to_i
-  diff1 = lines.current
-  m = lines.assert_next(/^\+\+\+.*\(revision (\d+)\)$/)
-  #next_rev = m[1].to_i
-  diff2 = lines.current
-  out.puts "#V #{prev_rev},NONE"
-  out.puts "#R #{path}"
-  out.puts "#U #{diff1}"
-  out.puts "#U #{diff2}"
-  while lines.next_line && lines.current =~ /^[-\+ @\\]/
-    out.puts "#U #{lines.current}"
-  end
-end
-
-def read_property_lines(path, prop_name, revision)
-  lines = []
-  svnexe("propget", revision, prop_name, path) do |io|
-    io.each_line do |line|
-      lines << line.chomp
-    end
-  end
-  lines
-end
-
-def assert_prop_match(a, b)
-  if a != b
-    raise "property mismatch: #{a.inspect}!=#{b.inspect}"
-  end
-end
-
-def munch_prop_text(path, prop_name, revision, lines, line0)
-  prop = read_property_lines(path, prop_name, revision)
-  assert_prop_match(line0, prop.shift)
-  prop.each do |prop_line|
-    lines.assert_next
-    assert_prop_match(lines.current.chomp, prop_line)
-  end
-end
-
-def read_properties_changed(out, lines, path)
-  lines.assert_next(/^_+$/)
-  return unless lines.next_line
-  while true
-    break unless lines.current =~ /^Name: (.+)$/
-    prop_name = $1
-    m = lines.assert_next(/^   ([-+]) (.*)/)
-    op = m[1]
-    line0 = m[2]
-    if op == "-"
-      munch_prop_text(path, prop_name, $revision-1, lines, line0)
-      if lines.next_line && lines.current =~ /^   \+ (.*)/
-	munch_prop_text(path, prop_name, $revision, lines, $1)
-	lines.next_line
-      end
-    else  # op == "+"
-      munch_prop_text(path, prop_name, $revision, lines, line0)
-      lines.next_line
-    end
-  end
-end
-
-def handle_copy(out, lines, path, from_ref, from_file)
-  # TODO: handle file copies in email
 end
 
 def process_svn_log(file)
@@ -265,7 +176,7 @@ def process_svn_diff(file)
     diff_lines = LineReader.new(diff_io)
     while diff_lines.next_line
       if diff_lines.current =~ /^Index:\s+(.*)/
-        read_modified_diff(file, diff_lines, $1)
+        read_diff(file, diff_lines, $1)
         if diff_lines.current_valid
             diff_lines.hold
         end
@@ -281,7 +192,6 @@ def process_commit()
     end
 end
 
-
 def main
   init()
   process_args()
@@ -289,6 +199,5 @@ def main
   send_email()
   cleanup()
 end
-
 
 main

@@ -1,6 +1,6 @@
 #!/usr/bin/ruby -w
-#$Id: svnspam.rb 10 2009-01-30 15:39:02Z mark@g.foster.cc $
-#$URL: http://svnspam.googlecode.com/svn/trunk/svnspam.rb $
+#$Id$
+#$URL$
 
 # SVNspam
 #   http://www.bitpusher.com/projects/svnspam/
@@ -975,7 +975,6 @@ class UnifiedDiffColouriser < LineConsumer
         when "+" then "added"
         when "-" then "removed"
       end
-      
       unless nextState == nil
         if @currentStyle=='info'
           print("<pre class=\"diff\"><small id=\"info\" style=\"color:#888888;\">")
@@ -1218,11 +1217,11 @@ $from_address = nil
 $subjectPrefix = nil
 $files_in_subject = false;
 $smtp_host = nil
-$user_repository_name = nil
+$repository_name = nil
 # 2MiB limit on attached diffs,
 $mail_size_limit = 1024 * 1024 * 2
 $arg_charset = nil
-$repository_name = nil
+$user_repository_name = nil
 
 require 'getoptlong'
 

@@ -1,6 +1,6 @@
 #!/usr/bin/ruby -w
-#$Id: svn_post_commit_hook.rb 11 2009-02-03 23:49:28Z mark@g.foster.cc $
-#$URL: http://svnspam.googlecode.com/svn/trunk/svn_post_commit_hook.rb $
+#$Id$
+#$URL$
 $svnlook_exe = "svnlook"  # default assumes the program is in $PATH
 
 def usage(msg)
